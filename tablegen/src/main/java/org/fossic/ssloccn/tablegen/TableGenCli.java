@@ -14,7 +14,7 @@ import java.util.Map;
  * <p>子命令：
  * <ul>
  *   <li>{@code generate --terms=a.json,b.json --mapping=x.tiny --out=string-table.json
- *       --gameVersion=0.98a-RC8 --generatedFrom=<仓库@commit>}</li>
+ *       --gameVersion=0.98a-RC8 --generatedFrom=<仓库@commit> [--exclude=exclusions.txt]}</li>
  *   <li>{@code audit --table=string-table.json --mapping=x.tiny --jars=n1.jar,n2.jar
  *       --obfJars=o1.jar,o2.jar --report=report.txt}
  *       （jars=named jar 做类存在性观测，obfJars=纯净混淆 jar 做字符串真值校验）</li>
@@ -70,6 +70,19 @@ public final class TableGenCli {
             terms.addAll(part);
         }
 
+        // 显式排除清单（terms/exclusions.txt）：原文同时被 Class/NameAndType 引用的
+        // 危险词条（翻译会破坏反射/符号引用路径，audit 的 extra_ref 检查拒收），
+        // 与旧管线 jar_loader 的跳过行为对齐。排除发生在类名转换前，键为词条原始类名。
+        String excludeOption = options.get("exclude");
+        if (excludeOption != null && !excludeOption.isBlank()) {
+            Path excludeFile = Path.of(excludeOption);
+            java.util.Set<String> exclusions = loadExclusions(excludeFile);
+            int before = terms.size();
+            terms.removeIf(term -> exclusions.contains(term.className() + "\t" + term.original()));
+            System.out.println("排除清单 " + excludeFile.getFileName() + "：" + exclusions.size()
+                    + " 条规则，排除词条 " + (before - terms.size()) + " 条");
+        }
+
         TinyMappings mappings = TinyMappings.parse(mappingFile);
         System.out.println("tiny 映射：" + mappings.size() + " 个类（" + mappingFile.getFileName() + "）");
 
@@ -99,7 +112,6 @@ public final class TableGenCli {
                 + "，跳过未译 " + stats.skippedUntranslated()
                 + "，跳过 stage " + stats.skippedStage()
                 + "，同值去重 " + stats.deduped()
-                + "，类名表键改写 " + stats.remappedKeys()
                 + "，占位符警告 " + result.warnings().size()
                 + "，同值冲突 " + result.conflicts().size());
         return 0;
@@ -147,6 +159,28 @@ public final class TableGenCli {
             }
         }
         return paths;
+    }
+
+    /**
+     * 读取排除清单：每行 {@code 类内部名<TAB>原文}，{@code #} 开头为注释，空行跳过。
+     * 格式不符（无 TAB 或多个 TAB）直接抛错。
+     */
+    private static java.util.Set<String> loadExclusions(Path file) throws IOException {
+        java.util.Set<String> exclusions = new java.util.HashSet<>();
+        int lineNumber = 0;
+        for (String line : Files.readAllLines(file, java.nio.charset.StandardCharsets.UTF_8)) {
+            lineNumber++;
+            if (line.isBlank() || line.startsWith("#")) {
+                continue;
+            }
+            int tab = line.indexOf('\t');
+            if (tab <= 0 || tab != line.lastIndexOf('\t') || tab == line.length() - 1) {
+                throw new IllegalArgumentException(
+                        file.getFileName() + "：第 " + lineNumber + " 行格式不符（应为 类内部名<TAB>原文）：" + line);
+            }
+            exclusions.add(line);
+        }
+        return exclusions;
     }
 
     private static String require(Map<String, String> options, String key) {

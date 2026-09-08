@@ -62,7 +62,7 @@ class AuditorTest {
                         org.objectweb.asm.Type.getType("Ljava/lang/Object;"), "尾串"},
                 new Object[]{"indy配方", 7});
 
-        Set<String> strings = Auditor.constantStrings(classBytes);
+        Set<String> strings = Auditor.scanConstantPool(classBytes).stringReferenced();
 
         assertTrue(strings.contains("ldc文本"));
         assertTrue(strings.contains("尾串"));
@@ -70,6 +70,37 @@ class AuditorTest {
         assertFalse(strings.contains("42"));
         // long/double 双槽跳过未读飞：集合大小恰好为 3 个字符串
         assertEquals(3, strings.size());
+    }
+
+    @Test
+    void 常量池扫描识别extraRef交集() {
+        byte[] classBytes = TestClasses.buildClassWithExtraRef("a/Extra", "d");
+
+        Auditor.ConstantPoolStrings pool = Auditor.scanConstantPool(classBytes);
+
+        assertTrue(pool.stringReferenced().contains("d"));
+        assertEquals(Set.of("d"), pool.extraReferenced());
+    }
+
+    @Test
+    void 原文同时被符号引用时审计失败并打印明细() throws Exception {
+        // ldc "d" + invokestatic a/Extra.d()V：UTF8 "d" 同时被 String 与 NameAndType 引用
+        Path obfJar = writeJar("obf-extra.jar", "a/Extra",
+                TestClasses.buildClassWithExtraRef("a/Extra", "d"));
+
+        JsonObject classTable = new JsonObject();
+        classTable.addProperty("d", "译d");
+        JsonObject classes = new JsonObject();
+        classes.add("a/Extra", classTable);
+
+        Auditor.AuditReport report = new Auditor().audit(
+                writeTable(classes), writeMappings(), List.of(), List.of(obfJar));
+
+        assertFalse(report.success());
+        assertEquals(0, report.hitTerms());
+        assertEquals(1, report.misses().size());
+        assertTrue(report.misses().get(0).reason().contains("Class/NameAndType"));
+        assertTrue(report.render().contains("拒收"));
     }
 
     @Test

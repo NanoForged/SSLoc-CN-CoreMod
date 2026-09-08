@@ -80,6 +80,10 @@ public final class TermsReader {
     /**
      * 从 context 解析权威类内部名（去 {@code .class} 后缀）。
      *
+     * <p>旧版 para_tranz 同原文多常量合并格式的 context 会含多个「类：」块，
+     * 本管线不支持合并格式（块与常量号/同值序号的对应关系无法确定），
+     * 检测到多块直接抛错——格式漂移应在构建期暴露，不允许静默只取第一块。
+     *
      * @param context    词条 context 全文
      * @param key        词条 key（仅用于报错信息）
      * @param sourceFile 来源文件名（仅用于报错信息）
@@ -91,6 +95,15 @@ public final class TermsReader {
             throw new IllegalArgumentException(sourceFile + "：词条 context 缺「类：」行，key=" + key);
         }
         String classPath = matcher.group(1);
+        if (matcher.find()) {
+            StringBuilder blocks = new StringBuilder(classPath);
+            do {
+                blocks.append("、").append(matcher.group(1));
+            } while (matcher.find());
+            throw new IllegalArgumentException(sourceFile
+                    + "：词条 context 含多个「类：」块（同原文多常量合并格式，本管线不支持）："
+                    + blocks + "，key=" + key);
+        }
         if (!classPath.endsWith(".class")) {
             throw new IllegalArgumentException(
                     sourceFile + "：「类：」行不是 .class 路径：" + classPath + "，key=" + key);

@@ -85,6 +85,19 @@ class TermsReaderTest {
     }
 
     @Test
+    void 多类块合并格式直接报错() {
+        // 旧版 para_tranz 同原文多常量合并格式：一个 context 含多个「类：」块
+        String merged = context("om/fs/starfarer/A.class", "0001", null)
+                + "\n类：om/fs/starfarer/B.class\n常量号：0002\n";
+        JsonArray array = new JsonArray();
+        array.add(term("k1", "Hello", "你好", 1, merged));
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> new TermsReader().read(writeTerms(array)));
+        org.junit.jupiter.api.Assertions.assertTrue(e.getMessage().contains("多个「类：」块"));
+        org.junit.jupiter.api.Assertions.assertTrue(e.getMessage().contains("om/fs/starfarer/B.class"));
+    }
+
+    @Test
     void 类行不是class后缀直接报错() {
         JsonArray array = new JsonArray();
         array.add(term("k1", "Hello", "你好", 1,

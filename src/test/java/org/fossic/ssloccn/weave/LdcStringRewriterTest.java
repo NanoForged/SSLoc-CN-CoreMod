@@ -41,6 +41,25 @@ class LdcStringRewriterTest {
     }
 
     @Test
+    void 字段ConstantValue字符串命中时被替换() {
+        byte[] original = TestClasses.buildClass("a/FieldConst",
+                new Object[]{"Hello"}, new Object[0],
+                new String[]{"Base value for colony size", "保留字段"});
+
+        LdcStringRewriter.RewriteResult result = LdcStringRewriter.rewrite(original,
+                Map.of("Base value for colony size", "殖民地规模基准值"));
+
+        assertTrue(result.changed());
+        assertEquals(Set.of("Base value for colony size"), result.matchedOriginals());
+
+        List<String> strings = TestClasses.collectStringConstants(result.bytes());
+        assertTrue(strings.contains("殖民地规模基准值"));
+        assertTrue(strings.contains("保留字段"));
+        assertTrue(strings.contains("Hello"));
+        assertFalse(strings.contains("Base value for colony size"));
+    }
+
+    @Test
     void 未命中时透传原数组且changed为false() {
         byte[] original = TestClasses.buildClass("a/NoHit",
                 new Object[]{"Hello"}, new Object[0]);

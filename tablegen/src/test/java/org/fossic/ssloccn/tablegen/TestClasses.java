@@ -58,4 +58,26 @@ final class TestClasses {
         writer.visitEnd();
         return writer.toByteArray();
     }
+
+    /**
+     * 织入 extra_ref 场景：m() 先 ldc 字符串 {@code value} 并弹栈，随后 invokestatic
+     * 调用一个名为 {@code value} 的方法——使该 UTF8 同时被 CONSTANT_String 与
+     * NameAndType（符号引用）引用（对应 jar_loader 拒翻的反射危险场景）。
+     */
+    static byte[] buildClassWithExtraRef(String internalName, String value) {
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
+        writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL,
+                internalName, null, "java/lang/Object", null);
+        MethodVisitor mv = writer.visitMethod(
+                Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "m", "()V", null, null);
+        mv.visitCode();
+        mv.visitLdcInsn(value);
+        mv.visitInsn(Opcodes.POP);
+        mv.visitMethodInsn(Opcodes.INVOKESTATIC, internalName, value, "()V", false);
+        mv.visitInsn(Opcodes.RETURN);
+        mv.visitMaxs(0, 0);
+        mv.visitEnd();
+        writer.visitEnd();
+        return writer.toByteArray();
+    }
 }

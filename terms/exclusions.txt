@@ -1,0 +1,16 @@
+# 词条排除清单（手工维护）：原文对应的 UTF8 同时被 Class/NameAndType 常量引用，
+# 翻译会连坐改写反射/符号引用路径（如 Class.forName、同名方法调用），禁止收录。
+# 与旧管线 jar_loader constant_table 的 extra_ref 拒翻行为对齐；
+# auditStringTable 的 extra_ref 检查会对清单外的此类词条 fail-loud，届时把明细追加到本文件。
+# 格式：类内部名（词条 context「类：」行去 .class 后缀）<TAB>原文
+com/fs/starfarer/api/impl/campaign/CoreScript	ships
+com/fs/starfarer/api/impl/campaign/intel/group/FleetGroupIntel	fleets
+com/fs/starfarer/api/impl/campaign/intel/misc/SalvorsTallyIntel	orbital
+com/fs/starfarer/api/impl/campaign/intel/misc/TradeFleetDepartureIntel	goods
+com/fs/starfarer/api/impl/campaign/intel/misc/TradeFleetDepartureIntel	materiel
+com/fs/starfarer/api/impl/campaign/rulecmd/salvage/MarketCMD$1	objectives
+com/fs/starfarer/api/impl/campaign/rulecmd/salvage/MarketCMD$2	objectives
+com/fs/starfarer/campaign/CharacterStats	points
+com/fs/starfarer/launcher/opengl/GLLauncher	fullscreen
+com/fs/starfarer/launcher/opengl/GLLauncher	sound
+com/fs/starfarer/ui/newui/X	next

@@ -16,7 +16,7 @@ Starsector 简体中文汉化 CoreMod（P1 阶段：jar 硬编码字符串运行
   - `table/StringTable` + `table/StringTableImpl`：查表接口与 org.json 实现
     （org.json 用游戏 classpath 自带的老版本，只有 `keys()` 迭代器，没有 `keySet()`）。
   - `weave/LdcStringRewriter`：ASM ClassVisitor 改写 ldc / invokedynamic bootstrap
-    参数中的字符串常量。
+    参数 / 字段 ConstantValue 三种形态中的字符串常量。
 - `tablegen/`：构建期工具模块（不进产物）。词条 JSON + tiny 映射 → string-table.json，
   以及构建期审计（Auditor）。CLI 入口 `TableGenCli`（generate / audit 子命令）。
 - `terms/`：词条快照（starfarer_obf.json / starfarer.api.json），来自
@@ -50,12 +50,18 @@ Starsector 简体中文汉化 CoreMod（P1 阶段：jar 硬编码字符串运行
      用 `-Pssloc.obfJarsDir=` 覆盖），经 named→obf 反查。
    - 原因：SourceSector 的 `game-jars/windows/starfarer_obf.jar` 本身是汉化版 jar
      （其 README 明示），named 仓的常量池已是中文，不能做原文真值来源。
-   - 当前实测：10808/10808 词条 100% 命中。
+   - 当前实测：10797/10797 词条 100% 命中（另有 11 条 extra_ref 危险词条经
+     `terms/exclusions.txt` 显式排除，见下条）。
 3. **常量池去重冲突**：named jar 常量池经 ASM 重建去重，同一原文在一处出现、
    词条里同值有多条译文时只能取同值序号 0 的译文（当前 11 组），构建期 WARN 并记入
    BuildResult.conflicts，不判失败。
-4. **运行期 remap 对齐**：NanoForge 运行期 remap 会把"整串恰为混淆类名"的 ldc 字符串
-   改写为 named 名，`TableBuilder.remapStringConstant` 在构建期做同样改写保持键一致。
+4. **extra_ref 安全防护（与旧管线 jar_loader 对齐）**：词条原文对应的 UTF8 若同时被
+   非 String 常量（Class / NameAndType）引用，翻译会连坐改写反射/符号引用路径
+   （Class.forName、同名方法调用）。`auditStringTable` 对这类词条 fail-loud；
+   已确认的 11 条危险词条收录在 `terms/exclusions.txt`（手工维护，生成期剔除并打印
+   排除数），审计再命中清单外条目时把审计明细追加进该文件。**禁止**为此恢复
+   "整串类名改 named" 的键改写（旧 remapStringConstant 已删除：named 名必不在
+   obf 池，audit 口径矛盾，且 NanoForge remap 只改 ldc 不改 indy，口径不完整）。
 5. **RFB 契约**：RFB 的 runTransformers 无条件采纳 transformer 返回值
    （与原版 LaunchWrapper「null=无变更」不同），transformer 任何路径都不得返回 null
    （入参 basicClass==null 除外）。

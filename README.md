@@ -30,7 +30,7 @@ Starsector 0.98a-RC8 的简体中文汉化 coremod，处理 **jar 内硬编码�
 - `build/distributions/SSLocCN-overlay-<版本>.zip` —— 发布包，解压到游戏目录后得到
   `mods/coremods/SSLocCN.jar`。
 
-`build` 会连带执行 `auditStringTable`：对照真实游戏字节码逐条断言全部 10808 条词条
+`build` 会连带执行 `auditStringTable`：对照真实游戏字节码逐条断言全部词条
 均可被替换，不到 100% 即构建失败，防止游戏更新后词条静默漂移。
 
 ## 词条更新

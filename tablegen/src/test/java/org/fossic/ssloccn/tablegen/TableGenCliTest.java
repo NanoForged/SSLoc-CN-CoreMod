@@ -92,6 +92,30 @@ class TableGenCliTest {
     }
 
     @Test
+    void 排除清单在生成期剔除危险词条() throws Exception {
+        Path terms = writeTermsFile();
+        Path tiny = writeTinyFile();
+        Path out = tempDir.resolve("string-table.json");
+        Path exclude = tempDir.resolve("exclusions.txt");
+        Files.writeString(exclude, "# 注释行\n\nom/fs/X\tHello\n", StandardCharsets.UTF_8);
+
+        int generateCode = TableGenCli.run(new String[]{
+                "generate",
+                "--terms=" + terms,
+                "--mapping=" + tiny,
+                "--out=" + out,
+                "--gameVersion=0.98a-RC8",
+                "--generatedFrom=TestRepo@abc123",
+                "--exclude=" + exclude});
+        assertEquals(0, generateCode);
+
+        JsonObject table = JsonParser.parseString(
+                Files.readString(out, StandardCharsets.UTF_8)).getAsJsonObject();
+        assertEquals(0, table.getAsJsonObject("stats").get("terms").getAsInt());
+        assertEquals(0, table.getAsJsonObject("classes").size());
+    }
+
+    @Test
     void 审计未命中返回1且报告含明细() throws Exception {
         Path terms = writeTermsFile();
         Path tiny = writeTinyFile();

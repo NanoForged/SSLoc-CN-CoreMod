@@ -56,7 +56,6 @@ public final class TableWriter {
         statsJson.addProperty("skippedUntranslated", stats.skippedUntranslated());
         statsJson.addProperty("skippedStage", stats.skippedStage());
         statsJson.addProperty("deduped", stats.deduped());
-        statsJson.addProperty("remappedKeys", stats.remappedKeys());
         root.add("stats", statsJson);
 
         JsonObject classesJson = new JsonObject();

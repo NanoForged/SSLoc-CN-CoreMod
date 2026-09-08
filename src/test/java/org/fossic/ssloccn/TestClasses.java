@@ -3,6 +3,7 @@ package org.fossic.ssloccn;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
@@ -13,8 +14,9 @@ import java.util.List;
 /**
  * 测试夹具：现场织入/回读含已知常量布局的类字节码。
  *
- * <p>覆盖 String ldc、非 String ldc（int/long/double/Class）与 invokedynamic
- * 字符串 bootstrap 参数三种形态，供改写器与 transformer 测试做真实字节码验证。
+ * <p>覆盖 String ldc、非 String ldc（int/long/double/Class）、invokedynamic
+ * 字符串 bootstrap 参数与字段 ConstantValue 四种形态，供改写器与 transformer
+ * 测试做真实字节码验证。
  */
 public final class TestClasses {
 
@@ -39,9 +41,24 @@ public final class TestClasses {
      * @param indyArgs     indy bootstrap 参数；空数组表示不生成 indy
      */
     public static byte[] buildClass(String internalName, Object[] ldcValues, Object[] indyArgs) {
+        return buildClass(internalName, ldcValues, indyArgs, new String[0]);
+    }
+
+    /**
+     * 同 {@link #buildClass(String, Object[], Object[])}，额外织入若干
+     * {@code static final String} 字段（ConstantValue 属性为给定值）。
+     *
+     * @param fieldConstantValues 字段常量值（依次命名为 F0、F1……）
+     */
+    public static byte[] buildClass(String internalName, Object[] ldcValues, Object[] indyArgs,
+                                    String[] fieldConstantValues) {
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
         writer.visit(Opcodes.V17, Opcodes.ACC_PUBLIC | Opcodes.ACC_FINAL,
                 internalName, null, "java/lang/Object", null);
+        for (int i = 0; i < fieldConstantValues.length; i++) {
+            writer.visitField(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
+                    "F" + i, "Ljava/lang/String;", null, fieldConstantValues[i]).visitEnd();
+        }
         MethodVisitor mv = writer.visitMethod(
                 Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC, "m", "()V", null, null);
         mv.visitCode();
@@ -65,11 +82,21 @@ public final class TestClasses {
     }
 
     /**
-     * 回读类字节码中出现的全部 String 型 ldc 值与 indy bootstrap 字符串参数（按出现序）。
+     * 回读类字节码中出现的全部 String 型 ldc 值、indy bootstrap 字符串参数与
+     * 字段 ConstantValue 字符串（按出现序）。
      */
     public static List<String> collectStringConstants(byte[] classBytes) {
         List<String> strings = new ArrayList<>();
         new ClassReader(classBytes).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public FieldVisitor visitField(int access, String name, String descriptor,
+                                           String signature, Object value) {
+                if (value instanceof String string) {
+                    strings.add(string);
+                }
+                return null;
+            }
+
             @Override
             public MethodVisitor visitMethod(int access, String name, String descriptor,
                                              String signature, String[] exceptions) {

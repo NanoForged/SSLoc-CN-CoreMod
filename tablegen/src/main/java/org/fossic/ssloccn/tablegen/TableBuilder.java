@@ -43,7 +43,6 @@ public final class TableBuilder {
         int skippedStage = 0;
         int skippedUntranslated = 0;
         int deduped = 0;
-        int remappedKeys = 0;
         List<String> warnings = new ArrayList<>();
         List<ConflictRecord> conflicts = new ArrayList<>();
 
@@ -59,12 +58,8 @@ public final class TableBuilder {
                 continue;
             }
             String namedClass = toNamedClass(term.className());
-            String effectiveOriginal = remapStringConstant(term.original());
-            if (!effectiveOriginal.equals(term.original())) {
-                remappedKeys++;
-            }
             grouped.computeIfAbsent(namedClass, k -> new TreeMap<>())
-                    .computeIfAbsent(effectiveOriginal, k -> new ArrayList<>())
+                    .computeIfAbsent(term.original(), k -> new ArrayList<>())
                     .add(term);
         }
 
@@ -101,28 +96,9 @@ public final class TableBuilder {
 
         return new BuildResult(
                 classes,
-                new TableStats(termCount, classes.size(), skippedUntranslated, skippedStage, deduped,
-                        remappedKeys),
+                new TableStats(termCount, classes.size(), skippedUntranslated, skippedStage, deduped),
                 List.copyOf(warnings),
                 List.copyOf(conflicts));
-    }
-
-    /**
-     * 与 NanoForge 运行期 remap（{@code StringAwareClassRemapper.mapClassNameString}）
-     * 对齐的字符串常量重映射：原文整串恰为某混淆类名（点号或斜杠形态）时，运行期看到的
-     * 是 named 名，表键必须同步改写（保持原分隔形态）；否则原样返回。
-     */
-    private String remapStringConstant(String original) {
-        boolean dotForm = original.indexOf('/') < 0;
-        if (dotForm && original.indexOf('.') < 0) {
-            return original;
-        }
-        String internalForm = dotForm ? original.replace('.', '/') : original;
-        String named = mappings.toNamed(internalForm);
-        if (named == null || named.equals(internalForm)) {
-            return original;
-        }
-        return dotForm ? named.replace('/', '.') : named;
     }
 
     /**
@@ -201,12 +177,9 @@ public final class TableBuilder {
      * @param skippedUntranslated 因译文为空或等于原文被跳过的词条数
      * @param skippedStage        因 stage 不在收录集合被跳过的词条数
      * @param deduped             同值重复被去重的词条数（含冲突消解中丢弃的）
-     * @param remappedKeys        原文为混淆类名而被改写为 named 名的表键数
-     *                            （与运行期 remap 的字符串改写对齐）
      */
     public record TableStats(
-            int terms, int classes, int skippedUntranslated, int skippedStage, int deduped,
-            int remappedKeys) {
+            int terms, int classes, int skippedUntranslated, int skippedStage, int deduped) {
     }
 
     /**

@@ -129,27 +129,4 @@ class TableBuilderTest {
         assertEquals(List.of("a/A", "b/B"), List.copyOf(result.classes().keySet()));
         assertEquals(List.of("a", "z"), List.copyOf(result.classes().get("b/B").keySet()));
     }
-
-    @Test
-    void 原文为混淆类名时表键改写为named名() throws Exception {
-        TinyMappings mappings = mappingsWith("om/fs/Foo", "com/fs/named/Foo");
-        List<Term> terms = List.of(
-                // 点号形态整串命中 → 改写为点号 named 名
-                term("a/A", "om.fs.Foo", "译文甲", 1, 1, null),
-                // 斜杠形态整串命中 → 改写为斜杠 named 名
-                term("a/A", "om/fs/Foo", "译文乙", 1, 2, null),
-                // 包含类名但非整串 → 不改写
-                term("a/A", "加载 om.fs.Foo 失败", "加载失败", 1, 3, null),
-                // 无分隔符 → 不改写
-                term("a/A", "Hello", "你好", 1, 4, null));
-
-        TableBuilder.BuildResult result = new TableBuilder(mappings).build(terms);
-
-        Map<String, String> classTable = result.classes().get("a/A");
-        assertEquals("译文甲", classTable.get("com.fs.named.Foo"));
-        assertEquals("译文乙", classTable.get("com/fs/named/Foo"));
-        assertEquals("加载失败", classTable.get("加载 om.fs.Foo 失败"));
-        assertEquals("你好", classTable.get("Hello"));
-        assertEquals(2, result.stats().remappedKeys());
-    }
 }

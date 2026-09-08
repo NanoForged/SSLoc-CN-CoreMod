@@ -29,17 +29,19 @@ import java.util.jar.JarFile;
  * <p>审计口径（为什么是两个 jar 来源）：
  * <ul>
  *   <li>字符串内容：对照<strong>纯净 Windows 混淆 jar</strong>（经映射 named→obf 反查
- *       取类）。运行期加载的是玩家游戏目录的纯净 jar，remap 只改类/成员名与
- *       "整串恰为类名"的字符串常量（表键已在构建期同步改写），其余字符串原样，
- *       故纯净 jar 的常量池就是运行期真值。named jar 不能用于字符串校验——
- *       其 starfarer_obf 由汉化版 jar 构建（SourceSector game-jars README 明示），
- *       常量池已是中文。</li>
+ *       取类）。运行期加载的是玩家游戏目录的纯净 jar，remap 只改类/成员名，
+ *       其余字符串原样，故纯净 jar 的常量池就是运行期真值。named jar 不能用于
+ *       字符串校验——其 starfarer_obf 由汉化版 jar 构建（SourceSector game-jars
+ *       README 明示），常量池已是中文。</li>
  *   <li>类存在性：named jar 侧做漂移观测（named 类应存在；缺失记入
  *       {@link AuditReport#namedMissingClasses()} 但不判失败——named jar 仅是
  *       开发期编译目标，运行期类名由"纯净 jar + 映射"推导）。</li>
  *   <li>判定口径与 jar_loader 提取口径一致：原文必须出现在该类「被 CONSTANT_String
- *       引用的 UTF8 常量」集合中（ldc 字面量与 indy bootstrap 字符串参数都是
- *       CONSTANT_String，一次扫描全覆盖；注解字符串本就不翻译）。</li>
+ *       引用的 UTF8 常量」集合中（ldc 字面量、indy bootstrap 字符串参数与字段
+ *       ConstantValue 都是 CONSTANT_String，一次扫描全覆盖；注解字符串本就不翻译）。</li>
+ *   <li>extra_ref 安全防护（与 jar_loader constant_table 口径一致）：原文对应的 UTF8
+ *       若同时被非 String 常量（Class / NameAndType）引用，翻译会连坐改写反射与符号
+ *       引用路径（如 Class.forName、同名方法调用），一律判审计失败并打印明细。</li>
  * </ul>
  * 命中率必须 100%，任何未命中逐条列入报告并使审计失败。
  */
@@ -93,12 +95,15 @@ public final class Auditor {
                 continue;
             }
 
-            Set<String> constantStrings = constantStrings(location.readBytes());
+            ConstantPoolStrings pool = scanConstantPool(location.readBytes());
             for (String original : originals) {
-                if (constantStrings.contains(original)) {
-                    hitTerms++;
-                } else {
+                if (!pool.stringReferenced().contains(original)) {
                     misses.add(new Miss(className, original, "常量池中无此字符串"));
+                } else if (pool.extraReferenced().contains(original)) {
+                    misses.add(new Miss(className, original,
+                            "原文同时被 Class/NameAndType 常量引用（翻译会破坏反射/符号引用），拒收"));
+                } else {
+                    hitTerms++;
                 }
             }
         }
@@ -107,24 +112,38 @@ public final class Auditor {
     }
 
     /**
-     * 提取类字节码中全部被 CONSTANT_String 引用的字符串值。
+     * 类常量池的字符串引用视图。
      *
-     * <p>手工解析常量池而非走 ASM 指令遍历：CONSTANT_String 一项即同时覆盖 ldc 字面量
-     * 与 invokedynamic bootstrap 字符串参数，且池级口径与 jar_loader 的提取口径一致
-     * （ASM {@code ClassReader.readConst} 遇 Fieldref/NameAndType 等引用型常量会抛
-     * IllegalArgumentException，无法直接全池遍历）。
+     * @param stringReferenced 被 CONSTANT_String 引用的字符串值集合
+     * @param extraReferenced  其中同时被非 String 常量（Class / NameAndType）引用的
+     *                         字符串值集合（stringReferenced 的子集，命中即拒收）
+     */
+    record ConstantPoolStrings(Set<String> stringReferenced, Set<String> extraReferenced) {
+    }
+
+    /**
+     * 扫描类常量池，提取字符串引用视图。
+     *
+     * <p>手工解析常量池而非走 ASM 指令遍历：CONSTANT_String 一项即同时覆盖 ldc 字面量、
+     * invokedynamic bootstrap 字符串参数与字段 ConstantValue，且池级口径与 jar_loader
+     * 的提取口径一致（ASM {@code ClassReader.readConst} 遇 Fieldref/NameAndType 等
+     * 引用型常量会抛 IllegalArgumentException，无法直接全池遍历）。
+     *
+     * <p>extra_ref 口径与 jar_loader constant_table 一致：记录被 Class（name_index）与
+     * NameAndType（name_index + descriptor_index）引用的 UTF8，与 String 引用求交。
      *
      * <p>UTF8 解码说明：class 文件使用 MUTF-8，与标准 UTF-8 仅在 NUL 与非 BMP 字符
-     * （增补平面）上编码不同；词条原文已验证不含这两类字符（构建期全量检查），
-     * 故直接按 UTF-8 解码是精确的。
+     * （增补平面）上编码不同。若词条原文含这两类字符，按 UTF-8 解码出的值与原文不等，
+     * 会以「常量池中无此字符串」未命中 fail-loud 暴露——不靠隐含假设兜底。
      */
-    static Set<String> constantStrings(byte[] bytes) {
+    static ConstantPoolStrings scanConstantPool(byte[] bytes) {
         if (bytes.length < 10 || readU2(bytes, 0) != 0xCAFE) {
             throw new IllegalArgumentException("不是有效的 class 文件（magic 不符）");
         }
         int constantCount = readU2(bytes, 8);
         String[] utf8ByIndex = new String[constantCount];
         List<Integer> stringUtf8Indexes = new ArrayList<>();
+        List<Integer> otherUtf8Indexes = new ArrayList<>();
 
         int offset = 10;
         for (int i = 1; i < constantCount; i++) {
@@ -135,7 +154,11 @@ public final class Auditor {
                     utf8ByIndex[i] = new String(bytes, offset + 3, length, StandardCharsets.UTF_8);
                     offset += 3 + length;
                 }
-                case 7, 16, 19, 20 -> offset += 3; // Class / MethodType / Module / Package
+                case 7 -> { // Class：name_index 是符号引用路径，翻译字符串不能连坐
+                    otherUtf8Indexes.add(readU2(bytes, offset + 1));
+                    offset += 3;
+                }
+                case 16, 19, 20 -> offset += 3; // MethodType / Module / Package
                 case 8 -> { // String
                     stringUtf8Indexes.add(readU2(bytes, offset + 1));
                     offset += 3;
@@ -145,7 +168,12 @@ public final class Auditor {
                     offset += 9;
                     i++;
                 }
-                case 9, 10, 11, 12, 18 -> offset += 5; // 引用型 / NameAndType / InvokeDynamic
+                case 9, 10, 11, 18 -> offset += 5; // Fieldref / Methodref / InterfaceMethodref / InvokeDynamic
+                case 12 -> { // NameAndType：name_index 与 descriptor_index 同为符号引用路径
+                    otherUtf8Indexes.add(readU2(bytes, offset + 1));
+                    otherUtf8Indexes.add(readU2(bytes, offset + 3));
+                    offset += 5;
+                }
                 case 15 -> offset += 4; // MethodHandle
                 case 17 -> offset += 5; // Dynamic
                 default -> throw new IllegalArgumentException("未知常量池 tag " + tag + "（常量号 " + i + "）");
@@ -154,13 +182,24 @@ public final class Auditor {
 
         Set<String> strings = new HashSet<>();
         for (int utf8Index : stringUtf8Indexes) {
-            String value = utf8ByIndex[utf8Index];
-            if (value == null) {
-                throw new IllegalArgumentException("CONSTANT_String 引用了不存在的 UTF8 常量：" + utf8Index);
-            }
-            strings.add(value);
+            strings.add(requireUtf8(utf8ByIndex, utf8Index));
         }
-        return strings;
+        Set<String> extra = new HashSet<>();
+        for (int utf8Index : otherUtf8Indexes) {
+            String value = requireUtf8(utf8ByIndex, utf8Index);
+            if (strings.contains(value)) {
+                extra.add(value);
+            }
+        }
+        return new ConstantPoolStrings(strings, extra);
+    }
+
+    private static String requireUtf8(String[] utf8ByIndex, int utf8Index) {
+        String value = utf8ByIndex[utf8Index];
+        if (value == null) {
+            throw new IllegalArgumentException("常量引用了不存在的 UTF8 常量：" + utf8Index);
+        }
+        return value;
     }
 
     private static int readU2(byte[] bytes, int offset) {

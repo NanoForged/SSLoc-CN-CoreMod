@@ -120,9 +120,25 @@ dependencies {
 
 val termsFiles = listOf("starfarer_obf.json", "starfarer.api.json")
     .map { layout.projectDirectory.file("terms/$it") }
-val mappingFile = providers.gradleProperty("ssloc.mappingFile")
-    .map { rootProject.file(it) }
-val termsCommit = providers.gradleProperty("ssloc.termsCommit")
+
+/** 读取必填 gradle 属性，缺失时给出属性名与用途说明而非裸 NoSuchElementException。 */
+fun requiredProperty(name: String, purpose: String): Provider<String> =
+    providers.gradleProperty(name).map { it }.orElse(
+        providers.provider {
+            throw GradleException(
+                "缺少必填 gradle 属性 -P$name（$purpose）。请在 gradle.properties 配置或命令行传入。")
+        }
+    )
+
+val mappingFile = requiredProperty(
+    "ssloc.mappingFile",
+    "Windows 全量 tiny 映射路径（obf→named），与 named 游戏 jar 同源，通常指向 Paragon 仓的 build/mappings/mappings-named.tiny"
+).map { rootProject.file(it) }
+val termsCommit = requiredProperty(
+    "ssloc.termsCommit",
+    "terms/ 词条快照来源仓的 commit，由 tools/sync_terms.sh 写入"
+)
+val exclusionsFile = layout.projectDirectory.file("terms/exclusions.txt")
 val stringTableFile = layout.buildDirectory.file("generated/resources/ssloc/string-table.json")
 
 val generateStringTable = tasks.register<JavaExec>("generateStringTable") {
@@ -132,6 +148,7 @@ val generateStringTable = tasks.register<JavaExec>("generateStringTable") {
     mainClass.set("org.fossic.ssloccn.tablegen.TableGenCli")
     inputs.files(termsFiles)
     inputs.files(mappingFile)
+    inputs.file(exclusionsFile)
     inputs.property("gameVersion", sdgExt.gameVersion)
     inputs.property("termsCommit", termsCommit)
     outputs.file(stringTableFile)
@@ -142,7 +159,8 @@ val generateStringTable = tasks.register<JavaExec>("generateStringTable") {
             "--mapping=${mappingFile.get().absolutePath}",
             "--out=${stringTableFile.get().asFile.absolutePath}",
             "--gameVersion=${sdgExt.gameVersion.get()}",
-            "--generatedFrom=Starsector-Localization-CN@${termsCommit.get()}"
+            "--generatedFrom=Starsector-Localization-CN@${termsCommit.get()}",
+            "--exclude=${exclusionsFile.asFile.absolutePath}"
         )
     }
 }
