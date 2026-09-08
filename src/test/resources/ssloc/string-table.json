@@ -1,0 +1,3 @@
+{"gameVersion":"0.98a-RC8","termFormat":"v2","generatedFrom":"test-fixture",
+ "stats":{"terms":2,"classes":1},
+ "classes":{"a/PluginProbe":{"ProbeText":"探针译文","Another":"另一译文"}}}
