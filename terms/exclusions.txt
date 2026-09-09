@@ -1,7 +1,11 @@
-# 词条排除清单（手工维护）：原文对应的 UTF8 同时被 Class/NameAndType 常量引用，
-# 翻译会连坐改写反射/符号引用路径（如 Class.forName、同名方法调用），禁止收录。
-# 与旧管线 jar_loader constant_table 的 extra_ref 拒翻行为对齐；
-# auditStringTable 的 extra_ref 检查会对清单外的此类词条 fail-loud，届时把明细追加到本文件。
+# 词条排除清单（手工维护），两类排除：
+# 1. extra_ref：原文对应的 UTF8 同时被 Class/NameAndType 常量引用，
+#    翻译会连坐改写反射/符号引用路径（如 Class.forName、同名方法调用），禁止收录。
+#    与旧管线 jar_loader constant_table 的 extra_ref 拒翻行为对齐；
+#    auditStringTable 的 extra_ref 检查会对清单外的此类词条 fail-loud，届时把明细追加到本文件。
+# 2. 语义标识符：原文是程序内部使用的 id/键（如性格 id、音效 id），并非显示文本，
+#    翻译后按 id 查表会返回 null（实机案例：FactionPersonalityPickerPluginImpl 的
+#    aggressive/reckless 被翻译导致军官性格 id 查找失败，读档 NPE）。
 # 格式：类内部名（词条 context「类：」行去 .class 后缀）<TAB>原文
 com/fs/starfarer/api/impl/campaign/CoreScript	ships
 com/fs/starfarer/api/impl/campaign/intel/group/FleetGroupIntel	fleets
@@ -14,3 +18,6 @@ com/fs/starfarer/campaign/CharacterStats	points
 com/fs/starfarer/launcher/opengl/GLLauncher	fullscreen
 com/fs/starfarer/launcher/opengl/GLLauncher	sound
 com/fs/starfarer/ui/newui/X	next
+# 语义标识符：性格 id，WeightedRandomPicker<String> 产物直接用作 setPersonality 的 id
+com/fs/starfarer/api/impl/campaign/FactionPersonalityPickerPluginImpl	aggressive
+com/fs/starfarer/api/impl/campaign/FactionPersonalityPickerPluginImpl	reckless
