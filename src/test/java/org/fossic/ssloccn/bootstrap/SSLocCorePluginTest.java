@@ -17,6 +17,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * SSLocCorePlugin 装配验证：真实加载 test classpath 上的 string-table.json fixture，
  * 安装进 transformer 后对探针类做端到端字符串替换。
+ *
+ * <p>onLoad 内含 LdcStringRewriter.warmup() 预热——本测试同时验证「onLoad 装表后
+ * transform 全链路成功执行」（预热生效后改写路径可用）；跨类名重入环路本身无法
+ * 在单测复现，机制与防护点见 StringReplaceTransformer 类 javadoc。
  */
 class SSLocCorePluginTest {
 

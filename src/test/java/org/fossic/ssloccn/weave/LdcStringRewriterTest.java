@@ -73,6 +73,23 @@ class LdcStringRewriterTest {
     }
 
     @Test
+    void warmup后改写路径真实可用() {
+        // warmup 以自身类字节跑完整 ASM 管线（不命中任何替换），
+        // 验证装配期预热可执行且预热后 rewrite 路径真实可用；
+        // 「onLoad 后 transform 不再触发新类加载」的并发重入机制无法单测，
+        // 防护点与实机根因见 LdcStringRewriter.warmup 与 StringReplaceTransformer 的 javadoc
+        LdcStringRewriter.warmup();
+
+        byte[] original = TestClasses.buildClass("a/Warm",
+                new Object[]{"Hello"}, new Object[0]);
+        LdcStringRewriter.RewriteResult result = LdcStringRewriter.rewrite(original,
+                Map.of("Hello", "你好"));
+
+        assertTrue(result.changed());
+        assertTrue(TestClasses.collectStringConstants(result.bytes()).contains("你好"));
+    }
+
+    @Test
     void 空替换表直接透传() {
         byte[] original = TestClasses.buildClass("a/Empty",
                 new Object[]{"Hello"}, new Object[0]);

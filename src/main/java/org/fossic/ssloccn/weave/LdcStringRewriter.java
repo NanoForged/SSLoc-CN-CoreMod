@@ -29,6 +29,34 @@ public final class LdcStringRewriter {
     }
 
     /**
+     * 预热：在装配期（{@code SSLocCorePlugin.onLoad}，非 transformer 链上下文）提前触发
+     * 本类及 rewrite 路径全部协作者（ASM ClassReader/ClassWriter/ClassVisitor/
+     * MethodVisitor/FieldVisitor、{@link RewriteResult}）的类加载与初始化。
+     *
+     * <p>动机（实机日志实证）：若延迟到 transform() 首次引用本类才加载，JVM 会经
+     * LaunchClassLoader 加载本类 → 穿过 transformer 链 → Mixin select/prepare 阶段
+     * 反读游戏类字节 → 重入 transform() → 再次引用尚在 findClass 途中的本类 →
+     * ClassCircularityError，窗口期内的游戏类永久失去翻译（35 个类，2026-09-09 实机）。
+     * onLoad 不在 transformer 链上下文内，此时加载自身协作者不会形成重入环路。
+     *
+     * <p>实现：以自身类字节为输入、非空伪替换表跑一次完整 rewrite——伪表必然不命中，
+     * 但 ASM 读写全管线被真实执行一遍，覆盖 rewrite 路径触及的所有类型。
+     */
+    public static void warmup() {
+        byte[] selfBytes;
+        try (java.io.InputStream in =
+                     LdcStringRewriter.class.getResourceAsStream("LdcStringRewriter.class")) {
+            if (in == null) {
+                throw new IllegalStateException("预热失败：读不到 LdcStringRewriter.class 自身资源");
+            }
+            selfBytes = in.readAllBytes();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("预热失败：读取自身类字节异常", e);
+        }
+        rewrite(selfBytes, Map.of("__ssloc_warmup_probe__", "__ssloc_warmup_probe__"));
+    }
+
+    /**
      * 改写结果。
      *
      * @param bytes             改写后字节码；无任何替换时为原数组（未复制）

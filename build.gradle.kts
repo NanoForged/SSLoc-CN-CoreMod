@@ -45,6 +45,8 @@ nanoforge {
     pluginClass.set("org.fossic.ssloccn.bootstrap.SSLocCorePlugin")
     authors.set(listOf("Hikari_Nova"))
     asmTransformers.set(listOf("org.fossic.ssloccn.bootstrap.StringReplaceTransformer"))
+    // 自身类加载不进入 transformer 链（防跨类名重入环路，见 StringReplaceTransformer javadoc）
+    asmTransformerExclusions.set(listOf("org.fossic.ssloccn"))
 }
 
 dependencies {

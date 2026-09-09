@@ -22,6 +22,21 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 早于 onLoad，但 {@link #transform} 只在更晚的游戏类加载时执行，懒读静态表是安全时序，
  * 与 SSOptimizer HybridWeaverTransformer 同款已验证模式）。类名统一 JVM 内部格式
  * （{@code /} 分隔）。
+ * <p>
+ * <b>自身类加载环路防护（实机实证，2026-09-09）</b>：transform() 首次引用
+ * {@code LdcStringRewriter} 会经 LaunchClassLoader 加载它，穿过 transformer 链时 Mixin
+ * select/prepare 阶段反读游戏类字节形成跨类名重入，再次引用尚在加载途中的
+ * {@code LdcStringRewriter} → ClassCircularityError（IN_FLIGHT 按游戏类名防护挡不住这种
+ * 重入）。两道防线：
+ * <ol>
+ *   <li>{@code SSLocCorePlugin.onLoad} 调用 {@code LdcStringRewriter.warmup()} 在装配期
+ *       （非 transformer 链上下文）完成全部协作者类加载——transform() 执行时不再触发
+ *       任何 org.fossic.ssloccn 类的新加载；</li>
+ *   <li>{@code coremod.toml} 的 {@code [asm] transformerExclusions} 排除
+ *       {@code org.fossic.ssloccn} 包——自身类加载不再进入 transformer 链。</li>
+ * </ol>
+ * 维护约束：表未安装（onLoad 前）的早退路径不得引用 {@code LdcStringRewriter}
+ * （onLoad 前已有对其他 coremod 元类的 transform 调用，靠 table==null 早退透传）。
  */
 public final class StringReplaceTransformer implements IClassTransformer {
     private static final Logger LOGGER = Logger.getLogger(StringReplaceTransformer.class);
